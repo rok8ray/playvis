@@ -1,70 +1,84 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <title>In-Browser AI Stage</title>
+  <meta charset="UTF-8" />
+  <title>In-Browser AI Stage Director</title>
+  <style>
+    body { margin: 0; overflow: hidden; background: #111; font-family: sans-serif; }
+    canvas { display: block; }
+    #ui {
+      position: absolute;
+      top: 15px; left: 15px;
+      background: rgba(255, 255, 255, 0.95);
+      padding: 20px; border-radius: 8px;
+      width: 320px; box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+      z-index: 10;
+    }
+    #ui h2 { margin: 0 0 10px 0; font-size: 18px; }
+    textarea {
+      width: 100%; height: 80px;
+      box-sizing: border-box; margin-bottom: 10px;
+      resize: vertical; font-family: inherit;
+    }
+    button {
+      width: 100%; padding: 10px; margin-bottom: 5px;
+      background: #007bff; color: white;
+      border: none; border-radius: 4px; cursor: pointer; font-weight: bold;
+    }
+    button:disabled { background: #ccc; cursor: not-allowed; }
+    #status { margin-top: 10px; font-size: 12px; color: #333; line-height: 1.4; }
+  </style>
+
+  <!-- Three.js Setup -->
+  <script async src="https://unpkg.com/es-module-shims@1.8.0/dist/es-module-shims.js"></script>
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+      }
+    }
+  </script>
 </head>
 <body>
-  <button id="loadBtn">1. Load AI (Takes a minute)</button>
-  <br><br>
-  <textarea id="prompt" placeholder="A tall red king argues with a blue jester..."></textarea>
-  <button id="genBtn" disabled>2. Generate Scene</button>
-  
-  <p id="status">Waiting...</p>
 
-  <!-- Import WebLLM directly from a CDN -->
+  <div id="ui">
+    <h2>AI Director's Chair</h2>
+    <button id="loadBtn">1. Load Local AI Model</button>
+    <textarea id="promptInput" placeholder="A tall red king argues with a tiny blue jester..."></textarea>
+    <button id="generateBtn" disabled>2. Generate Scene</button>
+    <div id="status">Status: Waiting to load AI...</div>
+  </div>
+
   <script type="module">
-    import { CreateWebWorkerMLCEngine } from "https://esm.run/@mlc.ai/web-llm";
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+    import { CreateMLCEngine } from "https://esm.run/@mlc-ai/web-llm";
 
-    let engine;
-    const status = document.getElementById("status");
-    const loadBtn = document.getElementById("loadBtn");
-    const genBtn = document.getElementById("genBtn");
+    // --- 1. THREE.JS SETUP ---
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color('#111111');
 
-    // 1. Load the model into the browser cache
-    loadBtn.addEventListener("click", async () => {
-      loadBtn.disabled = true;
-      status.innerText = "Downloading AI (only happens once)...";
-      
-      // We use a tiny, fast model perfect for JSON tasks
-      engine = await CreateWebWorkerMLCEngine(
-        "Phi-3-mini-4k-instruct-q4f16_1-MLC",
-        {
-          initProgressCallback: (info) => {
-            status.innerText = info.text; // Shows download progress
-          }
-        }
-      );
-      
-      status.innerText = "AI Ready! No internet required anymore.";
-      genBtn.disabled = false;
-    });
+    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+    camera.position.set(0, 5, 10);
 
-    // 2. Generate the Three.js layout
-    genBtn.addEventListener("click", async () => {
-      const text = document.getElementById("prompt").value;
-      status.innerText = "Thinking...";
-      genBtn.disabled = true;
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.body.appendChild(renderer.domElement);
 
-      // WebLLM uses the exact same format as OpenAI
-      const reply = await engine.chat.completions.create({
-        messages: [
-          { 
-            role: "system", 
-            content: "You are a 3D stage director. Output ONLY a valid JSON object containing an 'actors' array. Each actor needs a 'shape' (cube/sphere), 'color' (hex), and 'position' {x,y,z}." 
-          },
-          { role: "user", content: text }
-        ],
-        temperature: 0.1,
-      });
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
 
-      status.innerText = "Done!";
-      console.log("Raw JSON string from AI:", reply.choices[0].message.content);
-      
-      // Here is where you parse the JSON and loop through it to build your Three.js meshes
-      // const sceneData = JSON.parse(reply.choices[0].message.content);
-      
-      genBtn.disabled = false;
-    });
-  </script>
-</body>
-</html>
+    scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+    const dirLight = new THREE.DirectionalLight(0xffffff, 1);
+    dirLight.position.set(10, 15, 10);
+    scene.add(dirLight);
+
+    const gridHelper = new THREE.GridHelper(20, 20, 0x888888, 0x444444);
+    scene.add(gridHelper);
+
+    const stageGroup = new THREE.Group();
+    scene.add(stageGroup);
+
+    window.addEventListener('resize', () => {
+      camera.aspect =
